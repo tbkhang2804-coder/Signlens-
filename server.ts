@@ -269,9 +269,18 @@ async function getIceServersConfig(): Promise<{
   turnConfigured: boolean;
 }> {
   const iceServers: Array<Record<string, unknown>> = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun.cloudflare.com:3478' },
+    {
+      urls: [
+        'stun:stun.l.google.com:19302',
+        'stun:stun1.l.google.com:19302',
+        'stun:stun2.l.google.com:19302',
+        'stun:stun3.l.google.com:19302',
+        'stun:stun4.l.google.com:19302',
+        'stun:stun.cloudflare.com:3478',
+        'stun:global.stun.twilio.com:3478',
+        'stun:stun.services.mozilla.com',
+      ],
+    },
   ];
 
   let turnConfigured = false;
@@ -1103,6 +1112,15 @@ async function createServer() {
       detachFromRoom(true);
     });
   });
+
+  const wsHeartbeatTimer = setInterval(() => {
+    for (const client of wss.clients) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.ping();
+      }
+    }
+  }, 20000);
+  wsHeartbeatTimer.unref?.();
 
   const purgeTimer = setInterval(purgeExpiredRooms, 5 * 60 * 1000);
   purgeTimer.unref?.();

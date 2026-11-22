@@ -100,9 +100,18 @@ export async function fetchRtcConfig(): Promise<RtcConfigResponse> {
   }
   return {
     iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
+      {
+        urls: [
+          'stun:stun.l.google.com:19302',
+          'stun:stun1.l.google.com:19302',
+          'stun:stun2.l.google.com:19302',
+          'stun:stun3.l.google.com:19302',
+          'stun:stun4.l.google.com:19302',
+          'stun:stun.cloudflare.com:3478',
+          'stun:global.stun.twilio.com:3478',
+          'stun:stun.services.mozilla.com',
+        ],
+      },
     ],
     turnConfigured: false,
   };
@@ -776,6 +785,8 @@ export class SignLensRtcSession {
   private isOfferer = false;
   private closed = false;
   private hasRemotePeer = false;
+  private reconnectAttempts = 0;
+  private iceRestartTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(params: {
     roomCode: string;
@@ -834,7 +845,7 @@ export class SignLensRtcSession {
         if (this.ws?.readyState === WebSocket.OPEN) {
           this.sendSignal({ type: 'ping' });
         }
-      }, 25000);
+      }, 15000);
     };
 
     ws.onmessage = async (event) => {
@@ -871,12 +882,23 @@ export class SignLensRtcSession {
     }
   }
 
+  private scheduleIceRestart(delayMs = 1000): void {
+    if (this.iceRestartTimer) clearTimeout(this.iceRestartTimer);
+    this.iceRestartTimer = setTimeout(() => {
+      if (!this.closed && this.pc && this.pc.connectionState !== 'connected') {
+        void this.retryConnection();
+      }
+    }, delayMs);
+  }
+
   private ensurePeerConnection(): RTCPeerConnection {
     if (this.pc) return this.pc;
 
     const pc = new RTCPeerConnection({
       iceServers: this.iceServers,
-      iceCandidatePoolSize: 8,
+      iceCandidatePoolSize: 0,
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require',
     });
     this.pc = pc;
     this.remoteStream = new MediaStream();
@@ -931,23 +953,24 @@ export class SignLensRtcSession {
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
       if (state === 'connected') {
-        this.callbacks.onPhaseChange('connected', 'Đã kết nối P2P trực tiếp');
+        this.reconnectAttempts = 0;
+        this.callbacks.onPhaseChange('connected', 'Đã kết nối trực tiếp ổn định');
       } else if (state === 'connecting') {
         this.callbacks.onPhaseChange('negotiating', 'Đang thiết lập kết nối WebRTC...');
       } else if (state === 'disconnected') {
         this.callbacks.onPhaseChange('reconnecting', 'Đường truyền tạm gián đoạn, đang thử khôi phục...');
-        if (this.isOfferer && typeof pc.restartIce === 'function') {
-          try {
-            pc.restartIce();
-          } catch {
-            // ignore
-          }
-        }
+        this.scheduleIceRestart(1200);
       } else if (state === 'failed') {
-        const reason = this.turnConfigured
-          ? 'Kết nối WebRTC thất bại qua NAT/tường lửa.'
-          : 'Kết nối P2P trực tiếp thất bại giữa hai mạng khác nhau (chưa cấu hình máy chủ TURN relay).';
-        this.callbacks.onPhaseChange('failed', reason);
+        if (this.reconnectAttempts < 3 && !this.closed) {
+          this.reconnectAttempts++;
+          this.callbacks.onPhaseChange('reconnecting', `Đang tự động khôi phục kết nối (lần ${this.reconnectAttempts}/3)...`);
+          this.scheduleIceRestart(800);
+        } else {
+          const reason = this.turnConfigured
+            ? 'Kết nối WebRTC thất bại qua NAT/tường lửa. Bấm "Thử kết nối lại" bên dưới.'
+            : 'Kết nối trực tiếp thất bại giữa hai mạng khác nhau (chưa có TURN relay).';
+          this.callbacks.onPhaseChange('failed', reason);
+        }
       } else if (state === 'closed') {
         this.callbacks.onPhaseChange('disconnected', 'Cuộc gọi đã ngắt kết nối.');
       }
@@ -956,12 +979,19 @@ export class SignLensRtcSession {
     pc.oniceconnectionstatechange = () => {
       const iceState = pc.iceConnectionState;
       if (iceState === 'connected' || iceState === 'completed') {
-        this.callbacks.onPhaseChange('connected', 'Đã kết nối P2P trực tiếp');
+        this.reconnectAttempts = 0;
+        this.callbacks.onPhaseChange('connected', 'Đã kết nối trực tiếp ổn định');
       } else if (iceState === 'failed') {
-        const reason = this.turnConfigured
-          ? 'Không thể thiết lập đường truyền ICE giữa hai thiết bị.'
-          : 'Không thể xuyên NAT trực tiếp giữa hai mạng (cần cấu hình TURN relay).';
-        this.callbacks.onPhaseChange('failed', reason);
+        if (this.reconnectAttempts < 3 && !this.closed) {
+          this.reconnectAttempts++;
+          this.callbacks.onPhaseChange('reconnecting', `Đang tự động khôi phục kết nối (lần ${this.reconnectAttempts}/3)...`);
+          this.scheduleIceRestart(800);
+        } else {
+          const reason = this.turnConfigured
+            ? 'Không thể thiết lập đường truyền ICE giữa hai thiết bị.'
+            : 'Không thể xuyên NAT trực tiếp giữa hai mạng (cần cấu hình TURN relay).';
+          this.callbacks.onPhaseChange('failed', reason);
+        }
       }
     };
 
@@ -1191,22 +1221,25 @@ export class SignLensRtcSession {
   }
 
   async retryConnection(): Promise<void> {
-    if (!this.pc) return;
-    if (this.isOfferer) {
-      try {
-        const offer = await this.pc.createOffer({ iceRestart: true });
-        await this.pc.setLocalDescription(offer);
-        this.sendSignal({ type: 'offer', sdp: this.pc.localDescription });
-        this.callbacks.onPhaseChange('negotiating', 'Đang thử thiết lập lại kết nối WebRTC...');
-      } catch {
-        this.callbacks.onError('Không thể khởi động lại kết nối ICE.');
-      }
+    if (!this.pc || this.closed) return;
+    try {
+      this.callbacks.onPhaseChange('reconnecting', 'Đang thiết lập lại kết nối WebRTC...');
+      const offer = await this.pc.createOffer({ iceRestart: true });
+      await this.pc.setLocalDescription(offer);
+      this.sendSignal({ type: 'offer', sdp: this.pc.localDescription });
+    } catch {
+      // In case creating offer fails, fallback to signal notify
+      this.sendSignal({ type: 'media-state', camOn: true, micOn: true });
     }
   }
 
   disconnect(endRoomForAll = false): void {
     this.closed = true;
     this.hasRemotePeer = false;
+    if (this.iceRestartTimer) {
+      clearTimeout(this.iceRestartTimer);
+      this.iceRestartTimer = null;
+    }
     if (this.pingTimer) {
       clearInterval(this.pingTimer);
       this.pingTimer = null;

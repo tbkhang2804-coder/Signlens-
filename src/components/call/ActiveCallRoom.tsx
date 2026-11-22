@@ -6,6 +6,7 @@ import {
   Copy,
   Hand,
   Link2,
+  Maximize2,
   MessageSquare,
   QrCode,
   RefreshCw,
@@ -137,6 +138,7 @@ export default function ActiveCallRoom({
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [selectedCamId, setSelectedCamId] = useState(initialCamId);
+  const [videoFit, setVideoFit] = useState<'contain' | 'cover'>('contain');
 
   // VSL AI & Subtitles & Chat
   const [vslEnabled, setVslEnabled] = useState(role === 'deaf');
@@ -593,8 +595,12 @@ export default function ActiveCallRoom({
         const canvasEl = landmarkCanvasRef.current;
 
         if (videoEl && canvasEl && videoEl.readyState >= 2) {
-          canvasEl.width = videoEl.videoWidth || 640;
-          canvasEl.height = videoEl.videoHeight || 480;
+          const targetW = videoEl.videoWidth || 640;
+          const targetH = videoEl.videoHeight || 480;
+          if (canvasEl.width !== targetW || canvasEl.height !== targetH) {
+            canvasEl.width = targetW;
+            canvasEl.height = targetH;
+          }
           const ctx = canvasEl.getContext('2d');
           if (ctx) ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
 
@@ -672,9 +678,20 @@ export default function ActiveCallRoom({
       return;
     }
 
-    // Request camera if user entered without camera track
+    // Request camera with fixed 16:9 720p constraints to prevent mobile browser auto-zoom/ultra-wide distortion
     try {
-      const camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode }, audio: false });
+      const camStream = await navigator.mediaDevices.getUserMedia({
+        video: selectedCamId
+          ? { deviceId: { exact: selectedCamId }, width: { ideal: 1280, max: 1920 }, height: { ideal: 720, max: 1080 } }
+          : {
+              facingMode: { ideal: facingMode },
+              width: { ideal: 1280, max: 1920 },
+              height: { ideal: 720, max: 1080 },
+              aspectRatio: { ideal: 1.7777777778 },
+              frameRate: { ideal: 30, max: 30 },
+            },
+        audio: false,
+      });
       const newTrack = camStream.getVideoTracks()[0];
       if (newTrack) {
         const targetStream = localStreamRef.current || new MediaStream();
@@ -730,7 +747,15 @@ export default function ActiveCallRoom({
 
     try {
       const newCamStream = await navigator.mediaDevices.getUserMedia({
-        video: nextId ? { deviceId: { exact: nextId } } : { facingMode: nextFacing },
+        video: nextId
+          ? { deviceId: { exact: nextId }, width: { ideal: 1280, max: 1920 }, height: { ideal: 720, max: 1080 } }
+          : {
+              facingMode: { ideal: nextFacing },
+              width: { ideal: 1280, max: 1920 },
+              height: { ideal: 720, max: 1080 },
+              aspectRatio: { ideal: 1.7777777778 },
+              frameRate: { ideal: 30, max: 30 },
+            },
         audio: false,
       });
       const newTrack = newCamStream.getVideoTracks()[0];
@@ -940,12 +965,27 @@ export default function ActiveCallRoom({
         <div className="lg:col-span-8 flex flex-col gap-3">
           {/* Primary Video Stage */}
           <div className="relative w-full h-[54dvh] min-h-[340px] sm:h-[520px] rounded-3xl bg-slate-950 border border-slate-800 overflow-hidden shadow-2xl flex items-center justify-center">
+            {/* Quick Video Fit Toggle Button (prevents auto-zoom / cropping hands in VSL) */}
+            <button
+              type="button"
+              onClick={() => setVideoFit((f) => (f === 'contain' ? 'cover' : 'contain'))}
+              title={
+                videoFit === 'contain'
+                  ? 'Đang để Vừa khung (Không bị zoom/cắt tay). Bấm để chuyển Tràn viền.'
+                  : 'Đang để Tràn viền (Zoom đầy). Bấm để chuyển Vừa khung.'
+              }
+              className="absolute top-3 left-3 z-30 px-2.5 py-1.5 rounded-xl bg-slate-900/85 hover:bg-slate-800 text-white border border-slate-700/80 text-[11px] font-bold backdrop-blur-md flex items-center gap-1.5 cursor-pointer transition-all shadow-md"
+            >
+              <Maximize2 className="w-3.5 h-3.5 text-sky-400" />
+              <span>{videoFit === 'contain' ? 'Vừa khung (Không cắt tay)' : 'Tràn viền'}</span>
+            </button>
+
             {/* Remote Video */}
             <video
               ref={remoteVideoRef}
               autoPlay
               playsInline
-              className={`w-full h-full object-cover ${
+              className={`w-full h-full ${videoFit === 'cover' ? 'object-cover' : 'object-contain'} ${
                 rtcPhase === 'connected' && remoteHasVideo ? 'block' : 'hidden'
               }`}
             />
@@ -978,6 +1018,21 @@ export default function ActiveCallRoom({
                         ? 'Hai thiết bị có thể đang ở khác mạng NAT nghiêm ngặt và máy chủ chưa cấu hình TURN relay. Hãy thử cùng Wi-Fi hoặc cấu hình TURN_URL.'
                         : `Chia sẻ mã phòng ${roomCode} hoặc liên kết mời để người thứ hai tham gia cuộc gọi.`}
                     </p>
+                    {(rtcPhase === 'failed' || rtcPhase === 'reconnecting') && (
+                      <div className="pt-2 flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void sessionRef.current?.retryConnection();
+                            onToast('info', 'Đang thử khôi phục lại kết nối WebRTC...');
+                          }}
+                          className="min-h-[40px] px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black inline-flex items-center gap-1.5 cursor-pointer shadow-lg"
+                        >
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Thử kết nối lại</span>
+                        </button>
+                      </div>
+                    )}
                     {rtcPhase === 'waiting_peer' && (
                       <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
                         <button
@@ -1004,19 +1059,19 @@ export default function ActiveCallRoom({
             )}
 
             {/* Local PiP Camera + VSL Landmark Skeleton */}
-            <div className="absolute top-3 right-3 w-24 h-32 sm:w-44 sm:h-32 rounded-2xl bg-slate-900 border border-slate-700/90 shadow-xl overflow-hidden z-20 flex items-center justify-center">
+            <div className="absolute top-3 right-3 w-28 aspect-[3/4] sm:w-48 sm:aspect-video rounded-2xl bg-slate-900 border border-slate-700/90 shadow-2xl overflow-hidden z-20 flex items-center justify-center">
               <video
                 ref={localVideoRef}
                 autoPlay
                 playsInline
                 muted
-                className={`w-full h-full object-cover ${
+                className={`w-full h-full ${videoFit === 'cover' ? 'object-cover' : 'object-contain'} ${
                   facingMode === 'user' ? 'mirror-view' : ''
                 } ${camOn ? 'block' : 'hidden'}`}
               />
               <canvas
                 ref={landmarkCanvasRef}
-                className={`absolute inset-0 w-full h-full object-cover pointer-events-none ${
+                className={`absolute inset-0 w-full h-full ${videoFit === 'cover' ? 'object-cover' : 'object-contain'} pointer-events-none ${
                   facingMode === 'user' ? 'mirror-view' : ''
                 } ${camOn && vslEnabled ? 'block' : 'hidden'}`}
               />
@@ -1110,6 +1165,17 @@ export default function ActiveCallRoom({
               >
                 <SwitchCamera className="w-4 h-4" />
                 <span className="hidden sm:inline">Đổi cam</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setVideoFit((f) => (f === 'contain' ? 'cover' : 'contain'))}
+                aria-label="Đổi chế độ căn chỉnh camera"
+                className="min-h-[44px] px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                title={videoFit === 'contain' ? 'Đang để vừa khung hình (không cắt tay). Bấm để chuyển tràn viền.' : 'Đang để tràn viền (zoom đầy). Bấm để chuyển vừa khung.'}
+              >
+                <Maximize2 className="w-4 h-4 text-sky-400" />
+                <span className="hidden sm:inline">{videoFit === 'contain' ? 'Vừa khung' : 'Tràn viền'}</span>
               </button>
 
               <button

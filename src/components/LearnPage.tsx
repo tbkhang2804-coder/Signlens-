@@ -172,7 +172,10 @@ export default function LearnPage({ theme, onToast }: LearnPageProps) {
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
       practiceStreamRef.current = stream;
       if (practiceVideoRef.current) {
         practiceVideoRef.current.srcObject = stream;

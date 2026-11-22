@@ -142,7 +142,15 @@ export default function PreCallLobby({
 
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: camDeviceId ? { deviceId: { exact: camDeviceId } } : { facingMode: 'user' },
+          video: camDeviceId
+            ? { deviceId: { exact: camDeviceId }, width: { ideal: 1280, max: 1920 }, height: { ideal: 720, max: 1080 } }
+            : {
+                facingMode: 'user',
+                width: { ideal: 1280, max: 1920 },
+                height: { ideal: 720, max: 1080 },
+                aspectRatio: { ideal: 1.7777777778 },
+                frameRate: { ideal: 30, max: 30 },
+              },
           audio: true,
         });
         streamRef.current = stream;
@@ -171,7 +179,15 @@ export default function PreCallLobby({
         let gotAudio = false;
 
         try {
-          const camOnly = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          const camOnly = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: 'user',
+              width: { ideal: 1280, max: 1920 },
+              height: { ideal: 720, max: 1080 },
+              aspectRatio: { ideal: 1.7777777778 },
+            },
+            audio: false,
+          });
           fallbackStream = camOnly;
           gotVideo = true;
         } catch {
