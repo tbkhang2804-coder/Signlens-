@@ -1,0 +1,38 @@
+[
+  {
+    "id": "srv_xin_chao",
+    "language": "VSL",
+    "label": "XIN_CHAO",
+    "meaning_vi": "Xin chào",
+    "meaning_original": "Xin chào",
+    "category": "chào_hỏi",
+    "media_url": "https://www.youtube.com/watch?v=k3T3Z6sM8yA",
+    "media_type": "youtube",
+    "landmarks_sequence": [],
+    "landmarks_count": 0,
+    "source": "Thư viện chuẩn SignLens",
+    "license": "CC-BY-SA 4.0",
+    "moderation_status": "approved",
+    "moderation_notes": "Mẫu chào hỏi cơ bản VSL",
+    "created_at": "2026-11-22T04:23:45.173Z",
+    "updated_at": "2026-11-22T04:23:45.174Z"
+  },
+  {
+    "id": "srv_cam_on",
+    "language": "VSL",
+    "label": "CAM_ON",
+    "meaning_vi": "Cảm ơn",
+    "meaning_original": "Cảm ơn",
+    "category": "chào_hỏi",
+    "media_url": "https://www.youtube.com/watch?v=7wtfhZwyrcc",
+    "media_type": "youtube",
+    "landmarks_sequence": [],
+    "landmarks_count": 0,
+    "source": "Thư viện chuẩn SignLens",
+    "license": "CC-BY-SA 4.0",
+    "moderation_status": "approved",
+    "moderation_notes": "Mẫu cảm ơn lịch sự",
+    "created_at": "2026-11-22T04:23:45.174Z",
+    "updated_at": "2026-11-22T04:23:45.174Z"
+  }
+]

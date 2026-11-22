@@ -1,0 +1,6 @@
+{
+  "name": "SignLens",
+  "description": "KẾT NỐI KHÔNG CÒN KHOẢNG CÁCH — Nền tảng hỗ trợ giao tiếp ngôn ngữ ký hiệu, nhận diện cử chỉ AI, gọi video hai chiều và học VSL.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

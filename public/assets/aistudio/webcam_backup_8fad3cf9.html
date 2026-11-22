@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SignLens — Hand Tracking</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      margin-bottom: 1.2rem;
+      letter-spacing: 0.5px;
+    }
+    h1 span { color: #e94560; }
+
+    .controls {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    label { font-size: 0.95rem; }
+
+    select {
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      border: 1px solid #444;
+      background: #16213e;
+      color: #eee;
+      font-size: 0.95rem;
+      max-width: 320px;
+      cursor: pointer;
+    }
+
+    button {
+      padding: 0.5rem 1.2rem;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    #startBtn { background: #0f3460; color: #eee; }
+    #startBtn:hover { background: #1a4f8a; }
+
+    #stopBtn { background: #e94560; color: #fff; }
+    #stopBtn:hover { background: #c73550; }
+
+    .video-container {
+      position: relative;
+      width: 100%;
+      max-width: 720px;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+      background: #000;
+    }
+
+    video {
+      display: block;
+      width: 100%;
+      border-radius: 12px;
+    }
+
+    #overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border-radius: 12px;
+      pointer-events: none;
+    }
+
+    .dashboard {
+      margin-top: 1rem;
+      display: grid;
+      grid-template-columns: auto auto;
+      gap: 0.25rem 1rem;
+      font-size: 0.9rem;
+      color: #ccc;
+    }
+    .dashboard .label { text-align: right; color: #888; }
+    .dashboard .value { font-weight: 600; }
+
+    .value.live    { color: #4ade80; }
+    .value.off     { color: #f87171; }
+    .value.active  { color: #4ade80; }
+    .value.loading { color: #facc15; }
+    .value.idle    { color: #888; }
+
+    .result-box {
+      margin-top: 1.5rem;
+      padding: 1rem 1.5rem;
+      border: 2px solid #444;
+      border-radius: 12px;
+      text-align: center;
+      background: #16213e;
+      min-width: 320px;
+    }
+    .result-box strong { color: #888; font-size: 0.9rem; }
+    .sign-text {
+      font-size: 2rem;
+      font-weight: bold;
+      color: #e94560;
+      margin-top: 0.5rem;
+      min-height: 48px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>🤟 <span>SignLens</span> — Hand Tracking</h1>
+
+  <div class="controls">
+    <label for="cameraSelect">Camera:</label>
+    <select id="cameraSelect" disabled>
+      <option value="">-- click Start to begin --</option>
+    </select>
+    <button id="startBtn">Start</button>
+    <button id="stopBtn">Stop</button>
+  </div>
+
+  <div class="video-container">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+  </div>
+
+  <div class="dashboard">
+    <span class="label">Camera:</span>
+    <span id="camStatus" class="value off">OFF</span>
+
+    <span class="label">Hand Tracking:</span>
+    <span id="htStatus" class="value idle">IDLE</span>
+
+    <span class="label">Hands detected:</span>
+    <span id="handCount" class="value">0</span>
+
+    <span class="label">FPS:</span>
+    <span id="fpsDisplay" class="value">—</span>
+  </div>
+
+  <div class="result-box">
+    <strong>Detected Sign:</strong>
+    <div id="signOutput" class="sign-text">...</div>
+  </div>
+
+  <!-- ── On-screen Debugger ───────────────────────── -->
+  <div id="debugOverlay" style="margin-top: 1rem; width: 100%; max-width: 720px; background: #111; padding: 10px; border-radius: 8px; font-family: monospace; font-size: 0.8rem; color: #0f0; max-height: 200px; overflow-y: auto; text-align: left; border: 1px solid #333;">
+    <div style="color: #aaa; margin-bottom: 5px; border-bottom: 1px solid #333; padding-bottom: 5px;">Debug Console Logs:</div>
+    <div id="debugLogs"></div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════
+       Regular script — camera always works even if
+       MediaPipe CDN fails to load.
+       ════════════════════════════════════════════════ -->
+  <script>
+    /* ── On-screen Logger ──────────────────────────── */
+    const debugLogs = document.getElementById('debugLogs');
+    function logToScreen(msg, color) {
+      const div = document.createElement('div');
+      div.style.color = color;
+      div.textContent = msg;
+      debugLogs.appendChild(div);
+      debugLogs.parentNode.scrollTop = debugLogs.parentNode.scrollHeight;
+    }
+    const origLog = console.log, origWarn = console.warn, origErr = console.error;
+    console.log = function(...args) { origLog(...args); logToScreen(args.join(' '), '#fff'); };
+    console.warn = function(...args) { origWarn(...args); logToScreen(args.join(' '), '#ff0'); };
+    console.error = function(...args) { origErr(...args); logToScreen(args.join(' '), '#f00'); };
+
+    /* ── DOM refs ──────────────────────────────────── */
+    const video        = document.getElementById('video');
+    const canvas       = document.getElementById('overlay');
+    const ctx          = canvas.getContext('2d');
+    const cameraSelect = document.getElementById('cameraSelect');
+    const startBtn     = document.getElementById('startBtn');
+    const stopBtn      = document.getElementById('stopBtn');
+    const camStatus    = document.getElementById('camStatus');
+    const htStatus     = document.getElementById('htStatus');
+    const handCount    = document.getElementById('handCount');
+    const fpsDisplay   = document.getElementById('fpsDisplay');
+
+    /* ── state ─────────────────────────────────────── */
+    let currentStream  = null;
+    let handLandmarker = null;   // set later by MediaPipe loader
+    let rafId          = null;
+    let lastFrameTime  = 0;
+    let fpsSamples     = [];
+    const FPS_WINDOW   = 20;
+
+    /* ── gesture heuristics ────────────────────────── */
+    const signOutput = document.getElementById('signOutput');
+    let signClearTimeout = null;
+
+    const WaveDetector = {
+      lastExtremeX: -1,
+      direction: 0,
+      waveCount: 0,
+      lastUpdateTime: 0,
+      cooldownUntil: 0,
+      threshold: 0.04, // 4% of frame width
+
+      update: function(wristX, now) {
+        if (now < this.cooldownUntil) return null;
+
+        if (now - this.lastUpdateTime > 500) {
+          // Reset if too much time passed between updates or movements
+          this.lastExtremeX = wristX;
+          this.direction = 0;
+          this.waveCount = 0;
+        }
+        this.lastUpdateTime = now;
+
+        let diff = wristX - this.lastExtremeX;
+
+        if (this.direction === 0) {
+          if (Math.abs(diff) > this.threshold) {
+            this.direction = diff > 0 ? 1 : -1;
+            this.lastExtremeX = wristX;
+            this.waveCount = 1;
+          }
+        } else if (this.direction === 1) {
+          if (diff < -this.threshold) {
+            this.direction = -1;
+            this.lastExtremeX = wristX;
+            this.waveCount++;
+          } else if (wristX > this.lastExtremeX) {
+            this.lastExtremeX = wristX;
+          }
+        } else if (this.direction === -1) {
+          if (diff > this.threshold) {
+            this.direction = 1;
+            this.lastExtremeX = wristX;
+            this.waveCount++;
+          } else if (wristX < this.lastExtremeX) {
+            this.lastExtremeX = wristX;
+          }
+        }
+
+        // 3 direction changes = left-right-left (a good wave)
+        if (this.waveCount >= 3) {
+          this.cooldownUntil = now + 2000; // 2 seconds cooldown
+          this.waveCount = 0;
+          return "Xin chào 👋";
+        }
+        return null;
+      }
+    };
+
+    /* ── hand skeleton connections ─────────────────── */
+    const HAND_CONNECTIONS = [
+      [0,1],[1,2],[2,3],[3,4],
+      [0,5],[5,6],[6,7],[7,8],
+      [0,9],[9,10],[10,11],[11,12],
+      [0,13],[13,14],[14,15],[15,16],
+      [0,17],[17,18],[18,19],[19,20],
+      [5,9],[9,13],[13,17]
+    ];
+
+    /* ── colours ───────────────────────────────────── */
+    const COLORS = {
+      thumb:'#FF6B6B', index:'#4ECDC4', middle:'#45B7D1',
+      ring:'#FDCB6E', pinky:'#A29BFE', palm:'#DFE6E9', wrist:'#FFFFFF'
+    };
+
+    function connectionColor(a, b) {
+      const m = Math.min(a, b), M = Math.max(a, b);
+      if (M <= 4) return COLORS.thumb;
+      if (m >= 5  && M <= 8)  return COLORS.index;
+      if (m >= 9  && M <= 12) return COLORS.middle;
+      if (m >= 13 && M <= 16) return COLORS.ring;
+      if (m >= 17 && M <= 20) return COLORS.pinky;
+      // connections from wrist (0) or palm cross
+      if (M <= 4)  return COLORS.thumb;
+      if (M <= 8)  return COLORS.index;
+      if (M <= 12) return COLORS.middle;
+      if (M <= 16) return COLORS.ring;
+      if (M <= 20) return COLORS.pinky;
+      return COLORS.palm;
+    }
+
+    function landmarkColor(i) {
+      if (i === 0) return COLORS.wrist;
+      if (i <= 4)  return COLORS.thumb;
+      if (i <= 8)  return COLORS.index;
+      if (i <= 12) return COLORS.middle;
+      if (i <= 16) return COLORS.ring;
+      return COLORS.pinky;
+    }
+
+    /* ══════════════════════════════════════════════════
+       CAMERA LOGIC  (identical to original)
+       ══════════════════════════════════════════════════ */
+
+    async function enumerateCameras() {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(d => d.kind === 'videoinput');
+      const prevId = cameraSelect.value;
+
+      cameraSelect.innerHTML = '';
+      videoDevices.forEach((device, i) => {
+        const option  = document.createElement('option');
+        option.value  = device.deviceId;
+        option.text   = device.label || ('Camera ' + (i + 1));
+        cameraSelect.appendChild(option);
+      });
+
+      if (prevId && Array.from(cameraSelect.options).some(o => o.value === prevId)) {
+        cameraSelect.value = prevId;
+      }
+      cameraSelect.disabled = videoDevices.length === 0;
+      return videoDevices;
+    }
+
+    function stopDetectionLoop() {
+      if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      handCount.textContent  = '0';
+      fpsDisplay.textContent = '—';
+      fpsSamples = [];
+    }
+
+    function stopCurrentStream() {
+      stopDetectionLoop();
+
+      if (currentStream) {
+        currentStream.getTracks().forEach(function(t) { t.stop(); });
+        currentStream = null;
+      }
+      video.srcObject = null;
+
+      camStatus.textContent = 'OFF';
+      camStatus.className   = 'value off';
+      htStatus.textContent  = handLandmarker ? 'READY' : 'IDLE';
+      htStatus.className    = handLandmarker ? 'value active' : 'value idle';
+    }
+
+    async function startCamera(deviceId) {
+      stopCurrentStream();
+      console.log('[SignLens] Starting camera...', deviceId || 'default');
+
+      var constraints = { video: deviceId ? { deviceId: { exact: deviceId } } : true, audio: false };
+
+      try {
+        var stream    = await navigator.mediaDevices.getUserMedia(constraints);
+        currentStream = stream;
+        video.srcObject = stream;
+        video.play().catch(e => console.warn('[SignLens] Play prevented:', e.message));
+
+        camStatus.textContent = 'LIVE';
+        camStatus.className   = 'value live';
+
+        await enumerateCameras();
+
+        var activeTrack = stream.getVideoTracks()[0];
+        var settings    = activeTrack.getSettings();
+        if (settings.deviceId) cameraSelect.value = settings.deviceId;
+
+        // Wait for video to be ready, then start hand tracking loop
+        video.onloadeddata = function() {
+          console.log('[SignLens] Video data loaded:', video.videoWidth, 'x', video.videoHeight);
+          resizeCanvas();
+          startDetectionLoop();
+        };
+        // If already ready (e.g. same camera re-started)
+        if (video.readyState >= 2) {
+          console.log('[SignLens] Video already ready:', video.videoWidth, 'x', video.videoHeight);
+          resizeCanvas();
+          startDetectionLoop();
+        }
+
+      } catch (err) {
+        console.error('[SignLens] Camera error:', err.message);
+        camStatus.textContent = err.name === 'NotAllowedError'
+          ? 'DENIED' : err.name === 'NotFoundError' ? 'NOT FOUND' : 'ERROR';
+        camStatus.className = 'value off';
+      }
+    }
+
+    /* ── button listeners ──────────────────────────── */
+
+    startBtn.addEventListener('click', function() {
+      startCamera(cameraSelect.value || undefined);
+    });
+
+    stopBtn.addEventListener('click', function() {
+      stopCurrentStream();
+    });
+
+    cameraSelect.addEventListener('change', function() {
+      if (currentStream) startCamera(cameraSelect.value);
+    });
+
+    navigator.mediaDevices.addEventListener('devicechange', async function() {
+      await enumerateCameras();
+    });
+
+    /* ══════════════════════════════════════════════════
+       CANVAS RESIZE
+       ══════════════════════════════════════════════════ */
+
+    function resizeCanvas() {
+      if (video.videoWidth && video.videoHeight) {
+        // explicitly set video.width/height - mediapipe sometimes needs this
+        video.width = video.videoWidth;
+        video.height = video.videoHeight;
+        
+        canvas.width  = video.videoWidth;
+        canvas.height = video.videoHeight;
+        console.log(`[SignLens] Resized canvas to ${canvas.width}x${canvas.height}`);
+      }
+    }
+
+    var ro = new ResizeObserver(function() {
+      if (video.videoWidth) resizeCanvas();
+    });
+    ro.observe(video);
+
+    /* ══════════════════════════════════════════════════
+       DETECTION LOOP
+       ══════════════════════════════════════════════════ */
+
+    var detectionLoopPending = false;
+    var lastVideoTime = -1;
+    var framesSinceLastLog = 0;
+
+    function startDetectionLoop() {
+      // guard: don't queue multiple retry timers
+      if (detectionLoopPending) return;
+
+      if (!handLandmarker) {
+        // model still loading — show status and retry
+        htStatus.textContent = 'LOADING…';
+        htStatus.className   = 'value loading';
+        detectionLoopPending = true;
+        setTimeout(function() {
+          detectionLoopPending = false;
+          startDetectionLoop();
+        }, 500);
+        return;
+      }
+
+      // cancel any previous loop
+      if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+
+      htStatus.textContent = 'ACTIVE';
+      htStatus.className   = 'value active';
+      lastVideoTime = -1;
+      framesSinceLastLog = 0;
+      console.log('[SignLens] Detection loop started. Waiting for frames...');
+
+      function detect() {
+        if (!currentStream) return;
+        if (video.readyState < 2) {
+          rafId = requestAnimationFrame(detect);
+          return;
+        }
+
+        var now = performance.now();
+
+        try {
+          // MediaPipe needs to run ONLY when there's a new video frame
+          if (video.currentTime !== lastVideoTime) {
+            lastVideoTime = video.currentTime;
+            
+            // occasional debug log to ensure loop is running (1 log per ~100 frames)
+            if (framesSinceLastLog++ > 100) {
+              // console.log('[SignLens] Running inference... currentTime=' + video.currentTime);
+              framesSinceLastLog = 0;
+            }
+
+            var results = handLandmarker.detectForVideo(video, now);
+
+            // FPS
+            fpsSamples.push(now);
+            if (fpsSamples.length > FPS_WINDOW) fpsSamples.shift();
+            if (fpsSamples.length >= 2) {
+              var elapsed = fpsSamples[fpsSamples.length - 1] - fpsSamples[0];
+              fpsDisplay.textContent = Math.round(((fpsSamples.length - 1) / elapsed) * 1000);
+            }
+
+            // Draw
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            var numHands = (results && results.landmarks) ? results.landmarks.length : 0;
+            handCount.textContent = numHands;
+
+            for (var h = 0; h < numHands; h++) {
+              drawSkeleton(results.landmarks[h]);
+              drawLandmarkDots(results.landmarks[h]);
+              
+              // Only check wave for the first hand detected
+              if (h === 0) {
+                var detectedSign = WaveDetector.update(results.landmarks[h][0].x, now);
+                if (detectedSign) {
+                  signOutput.textContent = detectedSign;
+                  if (signClearTimeout) clearTimeout(signClearTimeout);
+                  signClearTimeout = setTimeout(() => { signOutput.textContent = "..."; }, 3000);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.error('[SignLens] Detect error:', e.message || e);
+        }
+
+        rafId = requestAnimationFrame(detect);
+      }
+
+      rafId = requestAnimationFrame(detect);
+    }
+
+    /* ══════════════════════════════════════════════════
+       DRAWING
+       ══════════════════════════════════════════════════ */
+
+    function drawSkeleton(landmarks) {
+      var w = canvas.width, h = canvas.height;
+      ctx.lineWidth = 3;
+
+      for (var c = 0; c < HAND_CONNECTIONS.length; c++) {
+        var a = HAND_CONNECTIONS[c][0], b = HAND_CONNECTIONS[c][1];
+        var pA = landmarks[a], pB = landmarks[b];
+        ctx.beginPath();
+        ctx.moveTo(pA.x * w, pA.y * h);
+        ctx.lineTo(pB.x * w, pB.y * h);
+        ctx.strokeStyle = connectionColor(a, b);
+        ctx.stroke();
+      }
+    }
+
+    function drawLandmarkDots(landmarks) {
+      var w = canvas.width, h = canvas.height;
+
+      for (var i = 0; i < landmarks.length; i++) {
+        var x = landmarks[i].x * w;
+        var y = landmarks[i].y * h;
+
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = landmarkColor(i);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(x, y, 2.5, 0, 2 * Math.PI);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+      }
+    }
+
+    /* ══════════════════════════════════════════════════
+       MEDIAPIPE — loaded dynamically so camera
+       still works even if CDN is slow / fails
+       ══════════════════════════════════════════════════ */
+
+    (async function loadMediaPipe() {
+      htStatus.textContent = 'LOADING…';
+      htStatus.className   = 'value loading';
+      console.log('[SignLens] Loading MediaPipe vision bundle (v0.10.3)…');
+
+      try {
+        var mp = await import(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs"
+        );
+        console.log('[SignLens] Vision bundle imported ✓');
+
+        var vision = await mp.FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+        );
+        console.log('[SignLens] WASM fileset resolved ✓');
+
+        console.log('[SignLens] Creating HandLandmarker. This may take a few seconds...');
+        handLandmarker = await mp.HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+            delegate: "GPU"
+          },
+          runningMode: "VIDEO",
+          numHands: 2
+        });
+
+        htStatus.textContent = 'READY';
+        htStatus.className   = 'value active';
+        console.log('[SignLens] HandLandmarker created ✓ Ready to detect!');
+
+      } catch (err) {
+        console.error('[SignLens] MediaPipe load failed:', err.message || err);
+        htStatus.textContent = 'LOAD FAILED';
+        htStatus.className   = 'value off';
+      }
+    })();
+  </script>
+</body>
+</html>
