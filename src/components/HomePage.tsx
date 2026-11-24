@@ -5,6 +5,7 @@ import {
   FileText,
   Hand,
   Laptop,
+  MessageSquare,
   Smartphone,
 } from 'lucide-react';
 import type { AppRoute } from '../types/signlens';
@@ -45,13 +46,13 @@ const FEATURE_CARDS: Array<{
   },
   {
     route: 'docs',
-    title: 'Phụ đề và giao tiếp văn bản',
+    title: 'Bảng giao tiếp nhanh',
     description:
-      'Chuyển giọng nói thành phụ đề thời gian thực, nhắn tin hai chiều và tạo file phụ đề .SRT nhanh.',
-    ctaLabel: 'Mở công cụ phụ đề',
-    accentClass: 'hover:border-indigo-400/70',
-    iconBgClass: 'bg-indigo-500/12 text-indigo-600 dark:text-indigo-400 border-indigo-500/25',
-    Icon: FileText,
+      'Giao tiếp trực tiếp giữa người dùng ngôn ngữ ký hiệu và người nghe qua câu mẫu, giọng nói TTS và chữ lớn toàn màn hình.',
+    ctaLabel: 'Mở bảng giao tiếp',
+    accentClass: 'hover:border-emerald-400/70',
+    iconBgClass: 'bg-emerald-500/12 text-emerald-600 dark:text-emerald-400 border-emerald-500/25',
+    Icon: MessageSquare,
   },
   {
     route: 'learn',
@@ -260,9 +261,9 @@ export default function HomePage({ onNavigate }: HomePageProps) {
                   <button
                     type="button"
                     onClick={() => onNavigate('docs')}
-                    className="hover:text-indigo-500 transition-colors cursor-pointer"
+                    className="hover:text-emerald-500 transition-colors cursor-pointer"
                   >
-                    Phụ đề &amp; Văn bản .SRT
+                    Bảng Giao Tiếp Nhanh
                   </button>
                 </li>
               </ul>

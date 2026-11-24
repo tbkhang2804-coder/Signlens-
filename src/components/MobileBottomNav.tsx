@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpen, Cpu, FileText, Home, MoreHorizontal, Shield, Video, X } from 'lucide-react';
+import { BookOpen, Cpu, FileText, Home, MessageSquare, MoreHorizontal, Shield, Video, X } from 'lucide-react';
 import type { AppRoute } from '../types/signlens';
 
 interface MobileBottomNavProps {
@@ -58,13 +58,13 @@ export default function MobileBottomNav({
                   : 'bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-800'
               }`}
             >
-              <div className="w-9 h-9 rounded-xl bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shrink-0">
-                <FileText className="w-4 h-4" />
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 flex items-center justify-center shrink-0">
+                <MessageSquare className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-extrabold">Dịch Văn Bản &amp; Phụ Đề .SRT</div>
+                <div className="text-xs font-extrabold">Bảng Giao Tiếp Nhanh</div>
                 <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                  Tóm tắt giấy tờ, đơn thuốc sang VSL &amp; xuất .SRT
+                  Câu mẫu, giọng nói TTS &amp; chữ lớn toàn màn hình
                 </div>
               </div>
             </button>

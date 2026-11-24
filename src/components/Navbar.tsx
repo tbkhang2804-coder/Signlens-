@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpen, Cpu, FileText, Home, Menu, Moon, Sun, User, Video, X } from 'lucide-react';
+import { BookOpen, Cpu, FileText, Home, Menu, MessageSquare, Moon, Sun, User, Video, X } from 'lucide-react';
 import type { AdminUser, AppRoute, ThemeMode } from '../types/signlens';
 import { SignLensBrandLogo } from './Icons';
 
@@ -20,7 +20,7 @@ const NAV_ITEMS: Array<{
   { route: 'home', label: 'Trang chủ', Icon: Home },
   { route: 'call', label: 'Gọi Video', Icon: Video },
   { route: 'learn', label: 'Học VSL', Icon: BookOpen },
-  { route: 'docs', label: 'Phụ đề & Văn bản', Icon: FileText },
+  { route: 'docs', label: 'Giao tiếp nhanh', Icon: MessageSquare },
   { route: 'studio', label: 'Studio AI', Icon: Cpu },
 ];
 

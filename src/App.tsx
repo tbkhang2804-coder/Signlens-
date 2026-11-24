@@ -4,7 +4,7 @@ import Navbar from './components/Navbar';
 import HomePage from './components/HomePage';
 import ConnectPage from './components/ConnectPage';
 import LearnPage from './components/LearnPage';
-import DocsPage from './components/DocsPage';
+import QuickCommPage from './components/QuickCommPage';
 import StudioPage from './components/StudioPage';
 import SignBotWidget from './components/SignBotWidget';
 import AccountAdminDrawer from './components/AccountAdminDrawer';
@@ -164,7 +164,7 @@ function SignLensRootApp() {
           />
         )}
         {route === 'learn' && <LearnPage theme={theme} onToast={pushToast} />}
-        {route === 'docs' && <DocsPage onToast={pushToast} />}
+        {route === 'docs' && <QuickCommPage onToast={pushToast} />}
         {route === 'studio' && (
           <StudioPage
             onStudioTrained={(count) => setStudioTrainedCount(count)}
